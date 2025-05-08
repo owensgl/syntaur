@@ -1,0 +1,10 @@
+Package: syntaur
+Type: Package
+Title: A program for finding genomic inversions in alignments
+Version: 0.1.0
+Author@R: person("Gregory", "Owens", email = "grego@uvic.ca",
+                  role = c("aut", "cre"))
+Description: This package takes anchorwave output and tries to estimate a series of inversions that will bring all alignments into synteny.
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
