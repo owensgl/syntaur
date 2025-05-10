@@ -2,6 +2,7 @@
 library(dplyr)
 library(ggplot2)
 
+#Reads in an anchorwave output file and adds appropriate column names. Outputs a dataframe.
 read_anchorwave <- function(file_path) {
    #col_names <- c("rs", "re", "qs", "qe", "error", "qid", "rid", "strand")
    col_names <- c("rs", "re", "qs", "qe", "rid", "qid", "strand")
@@ -10,7 +11,8 @@ read_anchorwave <- function(file_path) {
    return(data)
 }
 
-
+#Calculates the amount of alignment between pairs of ref and query chromosomes.
+#It outputs pairs that have a total alignment length greater than the minimum.
 find_matches <- function(data, min_size = 1000000) {
   # Calculate 'length' using 're' and 'rs'
   data <- as.data.frame(data)
@@ -53,25 +55,21 @@ find_matches <- function(data, min_size = 1000000) {
   return(ordered_result)
 }
 
-rate_order_1 <- function(dataframe){
-  order_1 <- dataframe[order(dataframe$rs),]
-  problems <- 0
-  for (i in 1:(nrow(order_1)-1)){
-    problems <- problems+(order_1$qs[i+1] - order_1$qe[i])
-  }
-  return(problems)
-}
 
-rate_order_2 <- function(dataframe){
+#This checks for inverted alignments and alignments out of order (in the query).
+#It orders blocks by reference and then checks for order in query.
+rate_order <- function(dataframe){
   order_1 <- dataframe[order(dataframe$rs),]
   problems <- 0
   gaps <- 0
+  #If the start of the next alignment is before the end of the current one, in ref order.
   for (i in 1:(nrow(order_1)-1)){
     gaps <- gaps+abs((order_1$qs[i+1] - order_1$qe[i]))
     if (order_1$qs[i] > order_1$qs[i+1]){
       problems <- problems+1
     }
   }
+  #If the alignment is reverse strand.
   for (i in 1:(nrow(order_1))){
     if (order_1$qs[i] > order_1$qe[i]){
       problems <- problems+1
@@ -105,18 +103,8 @@ check_overlap <- function(dataframe){
   return(problems)
 }
 
-rate_direction <- function(dataframe){
-  order_1 <- dataframe[order(dataframe$rs),]
-  problems <- 0
-  for (i in 1:(nrow(order_1)-1)){
-    if (order_1$qs[i] > order_1$qe[i]){
-      problems <- problems+1
-    }
-  }
-  return(problems)
-}
 
-
+#Flips alignments by flipping query positions relative to a start and stop.
 flip_orientation <- function(dataframe, boundary_start, boundary_end){
   if (nargs() <= 2){return()}
   all_edges <- c(dataframe$qs, dataframe$qe)
@@ -144,18 +132,20 @@ flip_orientation <- function(dataframe, boundary_start, boundary_end){
 }
 
 
-
+#Checks if flipping the entire alignment gives an improvement in continguity.
+#In some cases the chromosomes are just in opposite strand.
 full_flip_assess <- function(dataframe){
-  original_score <- rate_order_2(dataframe)[1]
+  original_score <- rate_order(dataframe)[1]
 
   all_breakpoints <- c(dataframe$qs, dataframe$qe)
   boundary_1 <- min(all_breakpoints)
   boundary_2 <- max(all_breakpoints)
-  full_flip_score <- rate_order_2(flip_orientation(dataframe, boundary_1, boundary_2))[1]
+  full_flip_score <- rate_order(flip_orientation(dataframe, boundary_1, boundary_2))[1]
   relative_score <- original_score - full_flip_score
   return(relative_score)
 }
 
+#Fully flips the chromosome for the query.
 full_flip <- function(dataframe){
 
   all_breakpoints <- c(dataframe$qs, dataframe$qe)
@@ -200,44 +190,6 @@ find_all_boundaries <- function(dataframe){
 
 
 
-find_all_boundaries_deep<-function(dataframe){
-  boundaries <- data.frame()
-  level_1 <- find_all_boundaries(dataframe)
-  for (i in 1:nrow(level_1)){
-    print(paste0("Level 1 ",i))
-    boundary_1.1 <- level_1$boundary_1[i]
-    boundary_2.1 <- level_1$boundary_2[i]
-    level_1_data <- flip_orientation(dataframe, boundary_1.1, boundary_2.1)
-    save_results <- data.frame(boundary_1 = c(boundary_1.1),
-                               boundary_2 = c(boundary_2.1),
-                               level = 1, id= paste0(i))
-    boundaries <- rbind(boundaries,save_results)
-    level_2 <- find_all_boundaries(level_1_data)
-    for (j in 1:nrow(level_2)){
-
-      boundary_1.2 <- level_2$boundary_1[j]
-      boundary_2.2 <- level_2$boundary_2[j]
-      level_2_data <- flip_orientation(level_1_data, boundary_1.2, boundary_2.2)
-      save_results <- data.frame(boundary_1 = c(boundary_1.1, boundary_1.2),
-                                 boundary_2 = c(boundary_2.1, boundary_2.2),
-                                 level = 2, id= paste0(i,"-",j))
-      boundaries <- rbind(boundaries,save_results)
-      level_3 <- find_all_boundaries(level_2_data)
-      for (k in 1:nrow(level_3)){
-
-        #Save all flips
-        boundary_1.3 <- level_3$boundary_1[k]
-        boundary_2.3 <- level_3$boundary_2[k]
-        save_results <- data.frame(boundary_1 = c(boundary_1.1, boundary_1.2, boundary_1.3),
-                                   boundary_2 = c(boundary_2.1, boundary_2.2, boundary_2.3),
-                                   level = 3, id= paste0(i,"-",j,"-",k))
-        boundaries <- rbind(boundaries,save_results)
-
-      }
-    }
-  }
-  return(boundaries)
-}
 
 level_1_test <- function(dataframe){
   level_1 <- find_all_boundaries(dataframe)
@@ -419,7 +371,7 @@ test_all_flips <- function(dataframe){
       }
     }
 
-    #pick set with lowest number of problems and fewest flips, then randomly select
+    #pick set with the most new stretches and fewest flips, then randomly select
     top_choices <- boundaries[which(boundaries$stretches == max(boundaries$stretches)),]
     top_choices <- top_choices[which(top_choices$level == min(top_choices$level)),]
     chosen_flip <- top_choices[sample(1:nrow(top_choices)), ][1,]
@@ -531,6 +483,7 @@ find_stretches <- function(dataframe){
   }
 }
 
+#looks for multiple alignments in the same direction with no gaps. It then merges them
 test_for_stretches <- function(dataframe){
   order_1 <- dataframe[order(dataframe$rs),]
   stretches <- 0
@@ -558,6 +511,7 @@ test_for_stretches <- function(dataframe){
   return(stretches)
 }
 
+#Removes cases where there is a duplication in the query genome.
 remove_overlap <- function(dataframe) {
   order_1 <- dataframe[order(dataframe$rs),]
   rows_to_remove <- c()
@@ -739,73 +693,24 @@ find_all_inversions <- function(file_name, prefix="deverter.out", min_size=10000
   }
   dev.off()
   write.table(inversion_regions, paste0(prefix,".txt"),quote=F, row.names = F)
+  #Need to add in output for the boundaries of inversions identified.
 }
 
+#Find boundary uncertainty
 
-simulate_inversions <- function(size=10000,inversions=1){
+boundary_uncertainty <- function(alignment, flips){
+  tmp_dataframe <- alignment
+  flipped_windows <- data.frame()
+  for (i in 1:nrow(flips)){
+    boundary_start <- flips[i,1]
+    boundary_end <- flips[i,2]
 
-  original <- data.frame()
-  #Variables just controlling the little windows used to find inversions.
-  window_size <- 20
-  window_length <- window_size/2
-  for (i in seq(window_size, size-window_size, window_size)){
-    row <- data.frame(rs=i,re=i+window_length,qs=i,qe=i+window_length)
-    original <- rbind(original, row)
+    tmp$inversion_n <- i
+    flipped_windows <- rbind(flipped_windows, tmp)
+    tmp_dataframe <- flip_orientation(tmp_dataframe, flips[i,1], flips[i,2])
   }
-  flipped <- original
-  breakpoints <- data.frame()
-  for (i in 1:inversions ){
-    b1 <- 2
-    b2 <- 1
-    while(b1 > b2){
-      b1 <- sample(original$rs, 1)
-      b2 <- sample(original$re, 1)
-    }
-    tmp <- data.frame(start=b1,end=b2)
-    breakpoints <- rbind(breakpoints, tmp)
   }
 
-  #Genome is broken up enough, now to rotate it
-  for (i in 1:inversions){
-    flipped <- flip_orientation(flipped, breakpoints$start[i], breakpoints$end[i])
-  }
-  output <- list(breakpoints,flipped)
-  return(output)
-}
 
-benchmark_sim <- function(inversions=1, iterations=10,replicates=1){
-  benchmark_result <- data.frame()
-  for (x in 1:replicates){
-    test_sim <- simulate_inversions(inversions=inversions)
-    estimate <- multi_iterate(test_sim[[2]],iterations=iterations)
-    smushed_real <- paste(test_sim[[1]]$start, test_sim[[1]]$end)
-    smushed_estimate <-  paste(estimate$boundary_1, estimate$boundary_2)
-    #Check if they're right.
-    #Check if real inversions were found.
-    inversions_found <- 0
-    for (i in 1:length(smushed_real)){
-      if (smushed_real[i] %in% smushed_estimate ){
-        inversions_found <- inversions_found + 1
-      }
-    }
-    missed_inversions <- inversions - inversions_found
-    #Check if extra inversions were found
-    estimates_found <- 0
-    for (i in 1:length(smushed_estimate)){
-      if (smushed_estimate[i] %in% smushed_real ){
-        estimates_found <- estimates_found + 1
-      }
-    }
-    extra_inversions <- length(smushed_estimate) - estimates_found
-    result <- data.frame(rep=x,
-                         missed_inversions=missed_inversions,
-                         extra_inversions=extra_inversions,
-                         total_inversions=inversions,
-                         iterations=iterations)
-    benchmark_result <- rbind(benchmark_result, result)
-  }
-  return(benchmark_result)
-
-}
 
 

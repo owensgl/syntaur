@@ -517,4 +517,64 @@ test_all_flips <- function(dataframe){
   return(inversion_list)
 }
 
+#This takes finds all combinations of 3 possible flips, which takes forever.
+find_all_boundaries_deep<-function(dataframe){
+  boundaries <- data.frame()
+  level_1 <- find_all_boundaries(dataframe)
+  for (i in 1:nrow(level_1)){
+    print(paste0("Level 1 ",i))
+    boundary_1.1 <- level_1$boundary_1[i]
+    boundary_2.1 <- level_1$boundary_2[i]
+    level_1_data <- flip_orientation(dataframe, boundary_1.1, boundary_2.1)
+    save_results <- data.frame(boundary_1 = c(boundary_1.1),
+                               boundary_2 = c(boundary_2.1),
+                               level = 1, id= paste0(i))
+    boundaries <- rbind(boundaries,save_results)
+    level_2 <- find_all_boundaries(level_1_data)
+    for (j in 1:nrow(level_2)){
 
+      boundary_1.2 <- level_2$boundary_1[j]
+      boundary_2.2 <- level_2$boundary_2[j]
+      level_2_data <- flip_orientation(level_1_data, boundary_1.2, boundary_2.2)
+      save_results <- data.frame(boundary_1 = c(boundary_1.1, boundary_1.2),
+                                 boundary_2 = c(boundary_2.1, boundary_2.2),
+                                 level = 2, id= paste0(i,"-",j))
+      boundaries <- rbind(boundaries,save_results)
+      level_3 <- find_all_boundaries(level_2_data)
+      for (k in 1:nrow(level_3)){
+
+        #Save all flips
+        boundary_1.3 <- level_3$boundary_1[k]
+        boundary_2.3 <- level_3$boundary_2[k]
+        save_results <- data.frame(boundary_1 = c(boundary_1.1, boundary_1.2, boundary_1.3),
+                                   boundary_2 = c(boundary_2.1, boundary_2.2, boundary_2.3),
+                                   level = 3, id= paste0(i,"-",j,"-",k))
+        boundaries <- rbind(boundaries,save_results)
+
+      }
+    }
+  }
+  return(boundaries)
+}
+
+#Checks how many cases where the query regions are out of order, after ordering by reference position.
+rate_order_1 <- function(dataframe){
+  order_1 <- dataframe[order(dataframe$rs),]
+  problems <- 0
+  for (i in 1:(nrow(order_1)-1)){
+    problems <- problems+(order_1$qs[i+1] - order_1$qe[i])
+  }
+  return(problems)
+}
+
+#This checks for alignments in the opposite direction.
+rate_direction <- function(dataframe){
+  order_1 <- dataframe[order(dataframe$rs),]
+  problems <- 0
+  for (i in 1:(nrow(order_1)-1)){
+    if (order_1$qs[i] > order_1$qe[i]){
+      problems <- problems+1
+    }
+  }
+  return(problems)
+}
